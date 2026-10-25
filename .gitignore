@@ -1,0 +1,6 @@
+__pycache__/
+*.db
+generated_orders/
+received_results/
+received_orders/
+generated_results/

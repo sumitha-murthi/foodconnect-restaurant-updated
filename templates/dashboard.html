@@ -1,0 +1,207 @@
+{% extends "base.html" %}{% block c %}
+<meta http-equiv="refresh" content="10">
+
+<div class="page-header">
+  <div>
+    <h1>Kitchen Management Dashboard</h1>
+    <p class="subtitle">Live order dispatch, real-time kitchen inventory & community donation tracking</p>
+  </div>
+  <div class="header-actions">
+    <a href="/inventory" class="btn btn-outline">📦 Manage Stock</a>
+    <a href="/donations" class="btn btn-primary">+ Post Surplus Food</a>
+  </div>
+</div>
+
+<!-- Stock Alert Banner if any items low -->
+{% if low_stock %}
+<div class="alert-banner alert-warning">
+  <div class="alert-icon">⚠️</div>
+  <div class="alert-content">
+    <b>Low Inventory Alerts Detected:</b>
+    <div class="low-stock-tags">
+      {% for item in low_stock %}
+      <span class="stock-pill {{ 'sold-out' if item.available_qty <= 0 else 'low-stock' }}">
+        {{ item.item_name }} ({{ item.available_qty }} left)
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+  <a href="/inventory" class="btn btn-sm">Restock Now</a>
+</div>
+{% endif %}
+
+<!-- Key Metrics Cards -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-number">{{ stats['PENDING'] }}</div>
+    <div class="stat-label">Pending Review</div>
+    <div class="stat-sub">Action required</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number" style="color:var(--g)">{{ stats['ACCEPTED'] }}</div>
+    <div class="stat-label">Accepted Orders</div>
+    <div class="stat-sub">In preparation</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number" style="color:#2563eb">{{ stats['PARTIALLY ACCEPTED'] }}</div>
+    <div class="stat-label">Partially Fulfilled</div>
+    <div class="stat-sub">Substituted / adjusted</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number" style="color:var(--r)">{{ stats['REJECTED'] }}</div>
+    <div class="stat-label">Rejected Orders</div>
+    <div class="stat-sub">Out of stock / cancelled</div>
+  </div>
+  <div class="stat-card highlight">
+    <div class="stat-number" style="color:#d97706">{{ active_donations }}</div>
+    <div class="stat-label">Charity Donations</div>
+    <div class="stat-sub">Available for pickup</div>
+  </div>
+  <div class="stat-card highlight">
+    <div class="stat-number" style="color:#7c3aed">{{ active_offers }}</div>
+    <div class="stat-label">Group Deals</div>
+    <div class="stat-sub">Active campaigns</div>
+  </div>
+</div>
+
+<!-- Incoming Orders List -->
+<div class="card table-card">
+  <div class="card-header">
+    <h3>Incoming Orders (CSV Protocol)</h3>
+    <span class="badge badge-pulse">● Auto-refreshing every 10s</span>
+  </div>
+  {% if orders %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Order ID</th>
+        <th>Customer</th>
+        <th>Restaurant</th>
+        <th>Received Time</th>
+        <th>Status</th>
+        <th>Delivery Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for o in orders %}
+      <tr>
+        <td><b>{{ o.order_id }}</b></td>
+        <td>{{ o.customer_id }}</td>
+        <td>{{ names.get(o.restaurant_id, o.restaurant_id) }}</td>
+        <td>{{ o.received_at }}</td>
+        <td><span class="tag {{ o.status|replace(' ','_') }}">{{ o.status }}</span></td>
+        <td>
+          {% if o.delivered %}
+          <span class="text-success">✓ Result Sent</span>
+          {% elif o.status == 'PENDING' %}
+          <span class="text-muted">Awaiting decision</span>
+          {% else %}
+          <span class="text-warning">⏳ Pending Send</span>
+          {% endif %}
+        </td>
+        <td>
+          <a class="btn btn-sm {{ 'btn-primary' if o.status == 'PENDING' else 'btn-outline' }}" href="/orders/{{ o.order_id }}">
+            {{ 'Review CSV' if o.status == 'PENDING' else 'View Details' }}
+          </a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <p class="m">No orders received yet. New incoming CSV orders will appear here automatically.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Advance Scheduled Meal Reservations -->
+<div class="card table-card" style="margin-top:20px">
+  <div class="card-header">
+    <div>
+      <h3>📅 Advance Scheduled Meal Reservations</h3>
+      <p class="m" style="margin:2px 0 0 0">Customers plan meals for future dates. Portions are automatically reserved in your inventory.</p>
+    </div>
+  </div>
+
+  {% if reservations %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Reservation ID</th>
+        <th>Customer</th>
+        <th>Date & Time</th>
+        <th>Meal Category</th>
+        <th>Reserved Food Items</th>
+        <th>Status</th>
+        <th>Kitchen Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in reservations %}
+      <tr>
+        <td><b>{{ r.id }}</b></td>
+        <td>{{ r.customer_id }}</td>
+        <td>
+          <b>{{ r.scheduled_date }}</b><br>
+          <span class="m">⏰ {{ r.scheduled_time }}</span>
+        </td>
+        <td>
+          <span class="tag PENDING">{{ r.meal_type }}</span>
+        </td>
+        <td>
+          {% for it in r['items'] %}
+          <div>• <b>{{ it.item }}</b> × {{ it.quantity }}</div>
+          {% endfor %}
+        </td>
+        <td>
+          {% if r.status == 'RESERVED' %}
+          <span class="tag ACCEPTED">Portions Reserved</span>
+          {% elif r.status == 'DECLINED_BY_KITCHEN' %}
+          <span class="tag REJECTED">Declined in Advance</span>
+          <div class="m" style="font-size:11px">Reason: {{ r.decline_reason }}</div>
+          {% else %}
+          <span class="tag">{{ r.status }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if r.status == 'RESERVED' %}
+          <button class="btn btn-xs btn-danger" onclick="declineScheduled('{{ r.id }}')">
+            ⚠️ Decline in Advance
+          </button>
+          {% else %}
+          <span class="m">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <p class="m">No advance meal plans scheduled yet. When customers schedule meals, reservations will appear here.</p>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+async function declineScheduled(id) {
+  const reason = prompt('Please enter the reason for advance cancellation (Customer will be notified in advance and refunded):', 'Kitchen closed / ingredients unavailable on selected date');
+  if (!reason) return;
+
+  const resp = await fetch(`/api/scheduled/${id}/reject`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason: reason })
+  });
+  const data = await resp.json();
+  if (data.success) {
+    alert(data.message);
+    location.reload();
+  } else {
+    alert(data.message);
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block t %}FoodConnect Kitchen Portal{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="{{ url_for('static', filename='js/csv.js') }}"></script>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-container">
+      <a class="nav-brand" href="/">
+        <span class="brand-icon">🍳</span> FoodConnect <span class="brand-sub">Kitchen</span>
+      </a>
+      <div class="nav-links">
+        <a href="/" class="nav-item">📋 Orders Dashboard</a>
+        <a href="/inventory" class="nav-item">📦 Inventory</a>
+        <a href="/donations" class="nav-item">🤝 Surplus Donations</a>
+        <a href="/group-offers" class="nav-item">⚡ Group Deals</a>
+        <a href="/charity" class="nav-item charity-tag" target="_blank">🌐 Charity Portal ↗</a>
+      </div>
+    </div>
+  </nav>
+  <main class="main-content">
+    {% block c %}{% endblock %}
+  </main>
+</body>
+</html>

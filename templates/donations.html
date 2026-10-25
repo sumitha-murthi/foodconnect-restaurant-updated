@@ -1,0 +1,235 @@
+{% extends "base.html" %}{% block c %}
+<div class="page-header">
+  <div>
+    <h1>Surplus Food Charity Donation System</h1>
+    <p class="subtitle">Donate prepared surplus meals to registered charities. Scheduled donations publish at the set time and expire after the collection deadline.</p>
+  </div>
+  <div>
+    <a href="/charity" target="_blank" class="btn btn-outline">View Public Charity Board ↗</a>
+  </div>
+</div>
+
+<div class="grid-2col">
+  <!-- Post Donation Card -->
+  <div class="card">
+    <h3>Post Surplus Food from Current Inventory</h3>
+    <p class="m">Food portions are deducted and reserved directly from the kitchen's live stock.</p>
+
+    <div class="form-vertical">
+      <div class="form-group">
+        <label>Donating Restaurant</label>
+        <select id="don_rid" class="form-input" onchange="onRestaurantChange()">
+          {% for rid, name in restaurants.items() %}
+          <option value="{{ rid }}" {{ 'selected' if rid==current_rid else '' }}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Food Item selected directly from Inventory -->
+      <div class="form-group">
+        <label>Food Item (from Current Inventory)</label>
+        <select id="don_item" class="form-input" onchange="updateMaxQuantity()">
+          {% for it in inventory %}
+          <option value="{{ it.item_name }}" data-stock="{{ it.available_qty }}">{{ it.item_name }} (Current Stock: {{ it.available_qty }} portions)</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Portions to Donate (<span id="stock_max_label" class="text-success">Available: 0</span>)</label>
+        <input type="number" id="don_qty" class="form-input" value="5" min="1">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Publication Date & Time</label>
+          <input type="text" id="don_publish_at" class="form-input" placeholder="YYYY-MM-DD HH:MM">
+          <span class="m" style="font-size:11px">Hidden from charities until this time</span>
+        </div>
+        <div class="form-group">
+          <label>Collection Deadline</label>
+          <input type="text" id="don_deadline" class="form-input" placeholder="YYYY-MM-DD HH:MM">
+          <span class="m" style="font-size:11px">Auto-expires after this time</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Food Safety & Handling Notes</label>
+        <textarea id="don_notes" class="form-input" rows="2">Prepared fresh today. Packed in sealed insulated containers. Consume within 3-4 hours of collection.</textarea>
+      </div>
+
+      <button class="btn btn-primary" onclick="createDonation()">Publish Charity Donation</button>
+      <span id="don_msg" class="m"></span>
+    </div>
+  </div>
+
+  <!-- Guidelines Card -->
+  <div class="card info-card">
+    <h3>Charity Donation Lifecycles</h3>
+    <ul class="feature-bullets">
+      <li><b>Publication Time Gate:</b> Charities can only see and claim donations once the publication date and time arrive.</li>
+      <li><b>Strict Collection Deadlines:</b> Once the deadline passes, any unclaimed food is automatically marked as <b>EXPIRED</b>.</li>
+      <li><b>Inventory Deduction:</b> Donated meals are immediately deducted from kitchen inventory to prevent double-selling.</li>
+      <li><b>Partial Quantity Claims:</b> Charities can claim partial portions (e.g., 5 out of 15), leaving the rest open for other NGOs!</li>
+    </ul>
+    <div class="notice-box">
+      <b>Status Legend:</b>
+      <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap">
+        <span class="tag PENDING">SCHEDULED</span>
+        <span class="tag ACCEPTED">AVAILABLE</span>
+        <span class="tag PARTIALLY_ACCEPTED">PARTIALLY CLAIMED</span>
+        <span class="tag" style="background:#059669; color:#fff">CLAIMED</span>
+        <span class="tag REJECTED">EXPIRED</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Active & Historical Donations Table -->
+<div class="card" style="margin-top:20px">
+  <h3>Donation Registry & Tracking</h3>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Restaurant & Dish</th>
+        <th>Remaining / Total</th>
+        <th>Publication Time</th>
+        <th>Collection Deadline</th>
+        <th>Status</th>
+        <th>Charity Claims</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in donations %}
+      <tr>
+        <td><b>{{ d.id }}</b></td>
+        <td>
+          <b>{{ d.food_items }}</b><br>
+          <span class="m">{{ d.restaurant_name }}</span>
+        </td>
+        <td>
+          <span class="stock-badge {{ 'badge-danger' if d.available_qty<=0 else 'badge-success' }}">
+            {{ d.available_qty }} / {{ d.total_qty }} left
+          </span>
+        </td>
+        <td>{{ d.publish_at }}</td>
+        <td><span class="text-danger">{{ d.pickup_deadline }}</span></td>
+        <td>
+          {% if d.status == 'AVAILABLE' %}
+          <span class="tag ACCEPTED">Available</span>
+          {% elif d.status == 'PARTIALLY_CLAIMED' %}
+          <span class="tag PARTIALLY_ACCEPTED">Partially Claimed</span>
+          {% elif d.status == 'CLAIMED' or d.status == 'ACCEPTED' %}
+          <span class="tag" style="background:#059669; color:#fff">All Claimed</span>
+          {% elif d.status == 'COLLECTED' %}
+          <span class="tag ACCEPTED">✓ Handed Over</span>
+          {% elif d.status == 'SCHEDULED' %}
+          <span class="tag PENDING">Scheduled</span>
+          {% elif d.status == 'EXPIRED' %}
+          <span class="tag REJECTED">Expired</span>
+          {% else %}
+          <span class="tag">{{ d.status }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if d.claims %}
+            {% for c in d.claims %}
+            <div style="font-size:12px; margin-bottom:4px; padding:3px 6px; background:#f8fafc; border-radius:4px">
+              <b>{{ c.charity_name }}</b> ({{ c.quantity_claimed }} portions)<br>
+              <span class="m">📞 {{ c.charity_contact }}</span>
+            </div>
+            {% endfor %}
+          {% elif d.charity_name %}
+            <b>{{ d.charity_name }}</b><br><span class="m">{{ d.charity_contact }}</span>
+          {% else %}
+          <span class="m">Unclaimed</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if d.status in ('CLAIMED', 'PARTIALLY_CLAIMED', 'ACCEPTED') %}
+          <button class="btn btn-xs btn-primary" onclick="markCollected('{{ d.id }}')">Mark Collected</button>
+          {% elif d.status == 'COLLECTED' %}
+          <span class="text-success">✓ Completed</span>
+          {% elif d.status == 'EXPIRED' %}
+          <span class="text-danger">Closed</span>
+          {% else %}
+          <span class="m">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+const pad = n => String(n).padStart(2, '0');
+const nowD = new Date();
+const dPub = `${nowD.getFullYear()}-${pad(nowD.getMonth()+1)}-${pad(nowD.getDate())} ${pad(nowD.getHours())}:${pad(nowD.getMinutes())}`;
+document.getElementById('don_publish_at').value = dPub;
+
+nowD.setHours(nowD.getHours() + 4);
+const dDead = `${nowD.getFullYear()}-${pad(nowD.getMonth()+1)}-${pad(nowD.getDate())} ${pad(nowD.getHours())}:${pad(nowD.getMinutes())}`;
+document.getElementById('don_deadline').value = dDead;
+
+function updateMaxQuantity() {
+  const itemSelect = document.getElementById('don_item');
+  const opt = itemSelect.options[itemSelect.selectedIndex];
+  const stock = opt ? parseInt(opt.dataset.stock) : 0;
+  document.getElementById('stock_max_label').textContent = `Available: ${stock} in inventory`;
+  document.getElementById('don_qty').max = stock;
+  if (parseInt(document.getElementById('don_qty').value) > stock) {
+    document.getElementById('don_qty').value = Math.max(1, stock);
+  }
+}
+updateMaxQuantity();
+
+function onRestaurantChange() {
+  const rid = document.getElementById('don_rid').value;
+  location.href = `/donations?rid=${rid}`;
+}
+
+async function createDonation() {
+  const rid = document.getElementById('don_rid').value;
+  const item = document.getElementById('don_item').value;
+  const qty = parseInt(document.getElementById('don_qty').value);
+  const pub = document.getElementById('don_publish_at').value.trim();
+  const dead = document.getElementById('don_deadline').value.trim();
+  const notes = document.getElementById('don_notes').value.trim();
+
+  if (!item || !qty || qty <= 0 || !pub || !dead) {
+    alert('Please fill out all required fields.');
+    return;
+  }
+
+  const resp = await fetch('/api/donations/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      restaurant_id: rid,
+      item_name: item,
+      quantity: qty,
+      publish_at: pub,
+      pickup_deadline: dead,
+      safety_notes: notes
+    })
+  });
+  const data = await resp.json();
+  if (data.success) {
+    alert(data.message);
+    location.reload();
+  } else {
+    alert(data.message);
+  }
+}
+
+async function markCollected(id) {
+  if (!confirm('Confirm food has been collected by charity?')) return;
+  const resp = await fetch(`/api/donations/${id}/collect`, { method: 'POST' });
+  const data = await resp.json();
+  if (data.success) location.reload(); else alert(data.message);
+}
+</script>
+{% endblock %}

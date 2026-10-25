@@ -1,0 +1,121 @@
+{% extends "base.html" %}{% block c %}
+<div class="page-header">
+  <div>
+    <h1>Real-Time Kitchen Inventory Management</h1>
+    <p class="subtitle">Control portion availability in real-time. Stock is automatically decremented when orders are accepted.</p>
+  </div>
+  <div class="restaurant-tabs">
+    {% for rid, name in restaurants.items() %}
+    <a href="/inventory?rid={{ rid }}" class="tab-btn {{ 'active' if rid == current_rid else '' }}">{{ name }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3>Portion Quantities & Alerts — {{ restaurants[current_rid] }}</h3>
+    <span class="m">Transaction-locked real-time stock sync with customer portal</span>
+  </div>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Dish / Item</th>
+        <th>Price</th>
+        <th>Available Portions</th>
+        <th>Alert Threshold</th>
+        <th>Status</th>
+        <th>Quick Stock Adjustment</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      {% set is_low = item.available_qty <= item.alert_threshold and item.available_qty > 0 %}
+      {% set is_out = item.available_qty <= 0 %}
+      <tr>
+        <td><b>{{ item.item_name }}</b></td>
+        <td>₹{{ item.unit_price|int }}</td>
+        <td>
+          <span class="stock-badge {{ 'badge-danger' if is_out else ('badge-warning' if is_low else 'badge-success') }}">
+            {{ item.available_qty }} portions
+          </span>
+        </td>
+        <td>{{ item.alert_threshold }} units</td>
+        <td>
+          {% if is_out %}
+          <span class="tag REJECTED">Sold Out</span>
+          {% elif is_low %}
+          <span class="tag PENDING">Low Stock Alert</span>
+          {% else %}
+          <span class="tag ACCEPTED">In Stock</span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="quick-adjust">
+            <button class="btn btn-xs" onclick="adjust('{{ item.item_name }}', {{ item.available_qty - 5 }}, {{ item.alert_threshold }})">-5</button>
+            <button class="btn btn-xs" onclick="adjust('{{ item.item_name }}', {{ item.available_qty - 1 }}, {{ item.alert_threshold }})">-1</button>
+            <button class="btn btn-xs btn-primary" onclick="adjust('{{ item.item_name }}', {{ item.available_qty + 1 }}, {{ item.alert_threshold }})">+1</button>
+            <button class="btn btn-xs btn-primary" onclick="adjust('{{ item.item_name }}', {{ item.available_qty + 10 }}, {{ item.alert_threshold }})">+10</button>
+            <button class="btn btn-xs btn-danger" onclick="adjust('{{ item.item_name }}', 0, {{ item.alert_threshold }})">Set Out</button>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card" style="margin-top:20px">
+  <h3>Custom Inventory Update</h3>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Item Name</label>
+      <select id="edit_item" class="form-input">
+        {% for item in items %}
+        <option value="{{ item.item_name }}">{{ item.item_name }} (Current: {{ item.available_qty }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>New Quantity</label>
+      <input type="number" id="edit_qty" class="form-input" min="0" value="20">
+    </div>
+    <div class="form-group">
+      <label>Alert Threshold</label>
+      <input type="number" id="edit_threshold" class="form-input" min="1" value="5">
+    </div>
+    <div class="form-group" style="align-self:flex-end">
+      <button class="btn btn-primary" onclick="submitCustom()">Update Inventory</button>
+    </div>
+  </div>
+</div>
+
+<script>
+async function adjust(itemName, newQty, threshold) {
+  newQty = Math.max(0, newQty);
+  const resp = await fetch('/api/inventory/update', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      restaurant_id: '{{ current_rid }}',
+      item_name: itemName,
+      available_qty: newQty,
+      alert_threshold: threshold
+    })
+  });
+  const data = await resp.json();
+  if (data.success) {
+    location.reload();
+  } else {
+    alert(data.message);
+  }
+}
+
+async function submitCustom() {
+  const item = document.getElementById('edit_item').value;
+  const qty = document.getElementById('edit_qty').value;
+  const threshold = document.getElementById('edit_threshold').value;
+  adjust(item, parseInt(qty), parseInt(threshold));
+}
+</script>
+{% endblock %}

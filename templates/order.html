@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% block c %}
+{% set pending = o.status == 'PENDING' %}
+<h1>Order {{ o.order_id }} <span class="tag {{ o.status|replace(' ','_') }}">{{ o.status }}</span></h1>
+<div class="m">Customer {{ o.customer_id }} · received {{ o.received_at }}</div>
+<div class="card"><h3>Items</h3>
+{% for i in items %}<div class="item" data-item="{{ i.item_name }}"><span>{{ i.item_name }} × {{ i.quantity }} <span class="m">₹{{ i.unit_price|int }} each</span></span>
+{% if pending %}<span><label><input type="radio" name="d{{ loop.index }}" value="ACCEPTED" checked> Accept</label>
+<label><input type="radio" name="d{{ loop.index }}" value="REJECTED"> Reject</label></span>
+{% else %}<span class="tag {{ i.status }}">{{ i.status }}</span>{% endif %}</div>{% endfor %}
+{% if pending %}<p><button id="ok" onclick="confirmOrder()">Confirm order</button> <span id="msg" class="m"></span></p>{% endif %}</div>
+<div class="card"><h3>Input CSV — {{ o.input_file }}</h3><div id="in"></div>
+<p><a class="btn o" href="/api/orders/{{ o.order_id }}/input" target="_blank">Open</a> <a class="btn o" href="/api/orders/{{ o.order_id }}/input?download=1">Download</a></p></div>
+{% if o.result_file %}<div class="card"><h3>Output CSV — {{ o.result_file }}</h3><div id="out"></div>
+<p><a class="btn o" href="/api/orders/{{ o.order_id }}/result" target="_blank">Open</a> <a class="btn o" href="/api/orders/{{ o.order_id }}/result?download=1">Download</a></p>
+<p>{% if o.delivered %}<span class="done">✓ Result delivered to customer</span>{% else %}<span class="now">Result not delivered yet.</span> <button onclick="resend()">Resend to customer</button>{% endif %}</p></div>{% endif %}
+<script>
+showCsv('/api/orders/{{ o.order_id }}/input',document.getElementById('in'));
+{% if o.result_file %}showCsv('/api/orders/{{ o.order_id }}/result',document.getElementById('out'));{% endif %}
+const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json());
+async function confirmOrder(){const decisions={};document.querySelectorAll('[data-item]').forEach(r=>decisions[r.dataset.item]=r.querySelector('input:checked').value);
+document.getElementById('ok').disabled=true;document.getElementById('msg').textContent='Generating result CSV and sending… (can take ~1 min if the customer app is waking up)';
+const d=await post('/api/orders/{{ o.order_id }}/process',{decisions});if(!d.success)alert(d.message);if(d.delivered===false)alert('Saved, but delivery failed: '+d.message);location.reload()}
+async function resend(){const d=await post('/api/orders/result',{order_id:'{{ o.order_id }}'});alert(d.message||'Done');location.reload()}
+</script>{% endblock %}

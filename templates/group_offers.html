@@ -1,0 +1,170 @@
+{% extends "base.html" %}{% block c %}
+<div class="page-header">
+  <div>
+    <h1>Group Buying & Time-Limited Flash Deals</h1>
+    <p class="subtitle">Create promotional bulk offers that activate automatically once a minimum target of customers joins before the deadline.</p>
+  </div>
+</div>
+
+<div class="grid-2col">
+  <!-- Create Group Deal Form -->
+  <div class="card">
+    <h3>Launch New Group Buying Campaign</h3>
+    <div class="form-vertical">
+      <div class="form-group">
+        <label>Restaurant</label>
+        <select id="grp_rid" class="form-input" onchange="updateItemOptions()">
+          {% for rid, name in restaurants.items() %}
+          <option value="{{ rid }}">{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Dish / Food Item</label>
+        <input type="text" id="grp_item" class="form-input" placeholder="e.g. Chicken Biryani" value="Chicken Biryani">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Original Price (₹)</label>
+          <input type="number" id="grp_orig" class="form-input" value="180">
+        </div>
+        <div class="form-group">
+          <label>Group Discounted Price (₹)</label>
+          <input type="number" id="grp_price" class="form-input" value="110">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Min Participants Target</label>
+          <input type="number" id="grp_min" class="form-input" value="4" min="2">
+        </div>
+        <div class="form-group">
+          <label>Offer Deadline</label>
+          <input type="text" id="grp_deadline" class="form-input" placeholder="YYYY-MM-DD HH:MM">
+        </div>
+      </div>
+
+      <button class="btn btn-primary" onclick="createGroupOffer()">Launch Group Deal</button>
+      <span id="grp_msg" class="m"></span>
+    </div>
+  </div>
+
+  <!-- Campaign Metrics Explainer -->
+  <div class="card info-card">
+    <h3>Group Buying Rules & Economics</h3>
+    <table class="data-table">
+      <tr><th>Mechanism</th><td>Customers join and lock deal price from their wallet.</td></tr>
+      <tr><th>Success Condition</th><td>Target participant count met before deadline.</td></tr>
+      <tr><th>Automatic Activation</th><td>When goal is met, orders are automatically confirmed at discount.</td></tr>
+      <tr><th>Failure & Refunds</th><td>If target is not met by deadline, customer wallets are auto-refunded.</td></tr>
+    </table>
+    <div class="notice-box" style="margin-top:14px">
+      <b>Target Revenue Calculation:</b> [Group Price] × [Min Participants] ensures restaurants cover prep costs while offering massive customer discounts.
+    </div>
+  </div>
+</div>
+
+<!-- Active Deals Table -->
+<div class="card" style="margin-top:20px">
+  <h3>Active & Past Group Buying Campaigns</h3>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Offer ID</th>
+        <th>Restaurant & Dish</th>
+        <th>Price vs Group Price</th>
+        <th>Participants Progress</th>
+        <th>Deadline</th>
+        <th>Status</th>
+        <th>Registered Customers</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for o in offers %}
+      {% set discount = (100 - (o.group_price / o.original_price * 100))|int %}
+      <tr>
+        <td><b>{{ o.id }}</b></td>
+        <td>
+          <b>{{ o.item_name }}</b><br>
+          <span class="m">{{ o.restaurant_name }}</span>
+        </td>
+        <td>
+          <span style="text-decoration:line-through; color:var(--m)">₹{{ o.original_price|int }}</span>
+          <b style="color:var(--a); font-size:16px"> ₹{{ o.group_price|int }}</b>
+          <span class="tag ACCEPTED">{{ discount }}% OFF</span>
+        </td>
+        <td style="min-width:180px">
+          <div class="progress-bar-container">
+            <div class="progress-bar-fill" style="width: {{ o.progress_percent }}%"></div>
+          </div>
+          <span class="m"><b>{{ o.count }}</b> of {{ o.min_participants }} joined ({{ o.progress_percent }}%)</span>
+        </td>
+        <td>{{ o.deadline }}</td>
+        <td>
+          {% if o.status == 'SUCCESS' %}
+          <span class="tag ACCEPTED">🎉 Goal Reached</span>
+          {% elif o.status == 'ACTIVE' %}
+          <span class="tag PENDING">⚡ Active (Filling)</span>
+          {% else %}
+          <span class="tag REJECTED">Expired</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if o.participants %}
+            {% for p in o.participants %}
+            <span class="customer-tag">👤 {{ p.customer_name }}</span>
+            {% endfor %}
+          {% else %}
+          <span class="m">No buyers yet</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+// Prefill deadline +6 hours
+const dNow = new Date();
+dNow.setHours(dNow.getHours() + 6);
+const pz = n => String(n).padStart(2, '0');
+document.getElementById('grp_deadline').value = `${dNow.getFullYear()}-${pz(dNow.getMonth()+1)}-${pz(dNow.getDate())} ${pz(dNow.getHours())}:${pz(dNow.getMinutes())}`;
+
+async function createGroupOffer() {
+  const rid = document.getElementById('grp_rid').value;
+  const item = document.getElementById('grp_item').value.trim();
+  const orig = document.getElementById('grp_orig').value;
+  const price = document.getElementById('grp_price').value;
+  const minP = document.getElementById('grp_min').value;
+  const dl = document.getElementById('grp_deadline').value.trim();
+
+  if (!item || !orig || !price || !minP || !dl) {
+    alert('Please fill out all group deal fields.');
+    return;
+  }
+
+  const resp = await fetch('/api/group-offers/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      restaurant_id: rid,
+      item_name: item,
+      original_price: orig,
+      group_price: price,
+      min_participants: minP,
+      deadline: dl
+    })
+  });
+  const data = await resp.json();
+  if (data.success) {
+    location.reload();
+  } else {
+    alert(data.message);
+  }
+}
+</script>
+{% endblock %}
